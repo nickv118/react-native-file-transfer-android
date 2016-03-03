@@ -70,6 +70,7 @@ public class FileTransferModule extends ReactContextBaseJavaModule {
 
       String url = options.getString("uploadUrl");
       String mimeType = options.getString("mimeType");
+        String fileKey = options.getString("fileKey");
       String fileName = options.getString("fileName");
       ReadableMap headers = options.getMap("headers");
       ReadableMap data = options.getMap("data");
@@ -78,34 +79,40 @@ public class FileTransferModule extends ReactContextBaseJavaModule {
 
         RequestBody requestBody = new MultipartBuilder()
                 .type(MultipartBuilder.FORM)
-                .addPart(
-                        Headers.of("Content-Disposition",
-                                "form-data; name=\"file\"; filename=\"" + fileName + "\""
-                        ),
-                        RequestBody.create(mediaType, file)
-                )
-                .addPart(
-                        Headers.of("Content-Disposition",
-                                "form-data; name=\"filename\""
-                        ),
-                        RequestBody.create(null, fileName)
-                )
+                .addFormDataPart(fileKey, fileName, RequestBody.create(mediaType, file))
                 .build();
 
-        Request request = new Request.Builder()
-                .header("Accept", "application/json")
-                .url(url)
-                .post(requestBody)
-                .build();
+        Request.Builder requestBuilder = new Request.Builder()
+                .header("Accept", "application/json");
+        if (headers.keySetIterator() != null) {
+            ReadableMapKeySetIterator iterator = headers.keySetIterator();
+            while(iterator.hasNextKey()) {
+                String key = iterator.nextKey();
+
+                if (headers.getType(key) == ReadableType.String) {
+                    String val = headers.getString(key);
+                    requestBuilder = requestBuilder.header(key, val);
+                }
+            }
+        }
+
+        requestBuilder = requestBuilder.url(url)
+                .put(requestBody);
+        Request request = requestBuilder.build();
 
         Response response = client.newCall(request).execute();
         if (!response.isSuccessful()) {
             Log.d(TAG, "Unexpected code" + response);
-            completeCallback.invoke(response, null);
+            completeCallback.invoke(response.toString(), null);
             return;
         }
+        String bodyString = response.body().string();
+        WritableMap res = Arguments.createMap();
+        res.putInt("status", response.code());
+        res.putString("data", bodyString);
+        completeCallback.invoke(null, res);
 
-        completeCallback.invoke(null, response.body().string());
+
     } catch(Exception e) {
       Log.d(TAG, e.toString());
     }
